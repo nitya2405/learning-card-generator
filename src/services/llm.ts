@@ -61,6 +61,7 @@ export async function generateLearningCard(
   try {
     const card = parseAndValidate(result.text);
     card.metadata.tokens_used = result.tokensUsed;
+    card.metadata.generated_at = new Date().toISOString();
     return card;
   } catch (firstErr) {
     if (!(firstErr instanceof ZodError) && !(firstErr instanceof SyntaxError)) {
@@ -88,6 +89,7 @@ export async function generateLearningCard(
     try {
       const card = parseAndValidate(retryResult.text);
       card.metadata.tokens_used = result.tokensUsed + retryResult.tokensUsed;
+      card.metadata.generated_at = new Date().toISOString();
       return card;
     } catch (secondErr) {
       const detail =
