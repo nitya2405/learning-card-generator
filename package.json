@@ -1,7 +1,7 @@
 {
   "name": "learning-card-generator",
   "version": "1.0.0",
-  "description": "Fastify + Claude API backend that generates structured learning cards for school students",
+  "description": "Fastify + Groq API backend that generates structured learning cards for school students",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -9,7 +9,7 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "groq-sdk": "^0.12.0",
     "dotenv": "^16.4.5",
     "fastify": "^5.8.5",
     "zod": "^3.23.8"

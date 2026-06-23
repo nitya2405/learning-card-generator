@@ -1,41 +1,40 @@
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { ZodError } from "zod";
 import { LearningCardSchema, type LearningCard } from "../schemas/cardSchema.js";
 import { buildPrompt, buildRetryPrompt } from "../prompts/buildPrompt.js";
 import type { LearningCardRequest } from "../schemas/requestSchema.js";
 
-const MODEL_NAME = "claude-sonnet-4-6";
+const MODEL_NAME = "llama-3.3-70b-versatile";
 
 const SYSTEM_MESSAGE =
   "You are a JSON API. Return only valid JSON, no markdown, no backticks, no explanation.";
 
-function getClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+function getClient(): Groq {
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY environment variable is not set");
+    throw new Error("GROQ_API_KEY environment variable is not set");
   }
-  return new Anthropic({ apiKey });
+  return new Groq({ apiKey });
 }
 
-async function callClaude(
+async function callGroq(
   prompt: string,
-  client: Anthropic
-): Promise<{ text: string; inputTokens: number; outputTokens: number }> {
-  const response = await client.messages.create({
+  client: Groq
+): Promise<{ text: string; tokensUsed: number }> {
+  const response = await client.chat.completions.create({
     model: MODEL_NAME,
     max_tokens: 4096,
-    system: SYSTEM_MESSAGE,
-    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: SYSTEM_MESSAGE },
+      { role: "user", content: prompt },
+    ],
   });
 
-  const text =
-    response.content[0].type === "text" ? response.content[0].text : "";
+  const text = response.choices[0].message.content ?? "";
+  const tokensUsed = response.usage?.total_tokens ?? 0;
 
-  return {
-    text,
-    inputTokens: response.usage.input_tokens,
-    outputTokens: response.usage.output_tokens,
-  };
+  return { text, tokensUsed };
 }
 
 function parseAndValidate(raw: string): LearningCard {
@@ -49,19 +48,19 @@ export async function generateLearningCard(
   const client = getClient();
   const prompt = buildPrompt(req);
 
-  let result: { text: string; inputTokens: number; outputTokens: number };
+  let result: { text: string; tokensUsed: number };
 
   try {
-    result = await callClaude(prompt, client);
+    result = await callGroq(prompt, client);
   } catch (err) {
     throw new Error(
-      `Claude API call failed: ${err instanceof Error ? err.message : String(err)}`
+      `Groq API call failed: ${err instanceof Error ? err.message : String(err)}`
     );
   }
 
   try {
     const card = parseAndValidate(result.text);
-    card.metadata.tokens_used = result.inputTokens + result.outputTokens;
+    card.metadata.tokens_used = result.tokensUsed;
     return card;
   } catch (firstErr) {
     if (!(firstErr instanceof ZodError) && !(firstErr instanceof SyntaxError)) {
@@ -77,22 +76,18 @@ export async function generateLearningCard(
 
     const retryPrompt = buildRetryPrompt(req, prompt, validationDetail);
 
-    let retryResult: { text: string; inputTokens: number; outputTokens: number };
+    let retryResult: { text: string; tokensUsed: number };
     try {
-      retryResult = await callClaude(retryPrompt, client);
+      retryResult = await callGroq(retryPrompt, client);
     } catch (retryCallErr) {
       throw new Error(
-        `Claude retry API call failed: ${retryCallErr instanceof Error ? retryCallErr.message : String(retryCallErr)}`
+        `Groq retry API call failed: ${retryCallErr instanceof Error ? retryCallErr.message : String(retryCallErr)}`
       );
     }
 
     try {
       const card = parseAndValidate(retryResult.text);
-      card.metadata.tokens_used =
-        result.inputTokens +
-        result.outputTokens +
-        retryResult.inputTokens +
-        retryResult.outputTokens;
+      card.metadata.tokens_used = result.tokensUsed + retryResult.tokensUsed;
       return card;
     } catch (secondErr) {
       const detail =

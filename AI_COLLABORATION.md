@@ -1,8 +1,16 @@
 # AI Collaboration Notes
 
-## Provider switch note
+## Provider history
 
-The project was originally built targeting Google Gemini (`gemini-2.0-flash`). During testing, the Gemini free tier returned `limit: 0` on every quota metric for all models — a geo-restriction that affects certain Google Cloud project configurations in India. Switching to Anthropic Claude required changing only `src/services/llm.ts` (renamed from `gemini.ts`) and the env key name. Every schema, route, and prompt stayed identical. This actually validates the service abstraction: the LLM provider is one file behind a stable `generateLearningCard` interface, so swapping it was a 20-minute change with zero risk to the rest of the system.
+Three providers were tried before landing on Groq:
+
+1. **Google Gemini** (`gemini-2.0-flash`) — returned `limit: 0` on all free tier quota metrics. This is a known issue for certain Google Cloud project configurations; the free tier simply has zero quota assigned at the project level. Not a code problem, not fixable without billing.
+
+2. **Anthropic Claude** (`claude-sonnet-4-6`) — API key connected successfully and the error handling worked correctly (the 402 surfaced cleanly through the service layer). However, Anthropic requires paid credits even for initial testing; there is no free tier.
+
+3. **Groq** (`llama-3.3-70b-versatile`) — genuinely free tier: 30 requests/minute, 14,400 requests/day, no credit card required. This is what the project currently uses.
+
+Each provider swap required changing exactly one file (`src/services/llm.ts`) and the env key name. Routes, schemas, prompt builder, and Zod validation were untouched across all three switches. This validates the service abstraction: `generateLearningCard` is the only interface the rest of the system depends on.
 
 ---
 
@@ -23,9 +31,9 @@ This produced the first draft of the `LearningCard` interface. I then trimmed it
 
 **2. LLM service setup (Claude Code)**
 
-> "Write a Claude service in TypeScript using @anthropic-ai/sdk that calls claude-sonnet-4-6 with a JSON system prompt, validates the output with a Zod schema, and retries once if validation fails — appending the Zod error messages to the prompt as a correction instruction."
+> "Write a Groq service in TypeScript using groq-sdk that calls llama-3.3-70b-versatile with response_format: json_object, validates the output with a Zod schema, and retries once if validation fails — appending the Zod error messages to the prompt as a correction instruction."
 
-Claude Code got the structure right immediately but instantiated a new `Anthropic` client on every call (inside the retry block), which is wasteful. Caught this on review and moved client instantiation to a `getClient()` function called once per request.
+Claude Code got the structure right immediately but instantiated a new `Groq` client on every call (inside the retry block), which is wasteful. Caught this on review and moved client instantiation to a `getClient()` function called once per request.
 
 **3. Prompt builder (Claude Code)**
 
@@ -40,13 +48,13 @@ First draft didn't include the full interface — it just described the shape in
 - Claude Code generated the Fastify route handler and Zod schemas accurately in one shot. Both were structurally correct and only needed minor tweaks (the Fastify JSON Schema alongside the Zod layer, which I added because the spec called for both).
 - The retry logic pattern — catching `ZodError | SyntaxError` specifically, not all errors — was suggested by Claude Code correctly without me having to specify it. Catching all errors in the retry would mask real API failures.
 - The `buildRetryPrompt` approach (appending the formatted Zod error list to the original prompt rather than rewriting it) came from Claude's suggestion and works well in practice.
-- The provider swap took under 20 minutes and required zero changes outside the service layer. The abstraction boundary held.
+- All three provider swaps took under 20 minutes each and required zero changes outside the service layer. The abstraction boundary held every time.
 
 ---
 
 ## Where the AI got it wrong
 
-**1. Re-instantiating the client on retry.** Claude placed `new Anthropic(...)` inside the retry block, so it built a new client on every attempt. Moved it out to `getClient()`.
+**1. Re-instantiating the client on retry.** Claude placed the client constructor inside the retry block, so it built a new SDK client on every attempt. Moved it out to `getClient()`.
 
 **2. Weak prompt, inconsistent LLM output.** The initial prompt Claude drafted described the schema in prose rather than embedding the TypeScript interface. The model responded with field names that were close but not exact (`generated_timestamp` instead of `generated_at`, nested `formula` instead of `key_formula`). Every run produced slightly different field names. Embedding the interface as a verbatim code block fixed this.
 
@@ -60,7 +68,7 @@ First draft didn't include the full interface — it just described the shape in
 
 - Ran `npm run dev` and sent a test request. The server started but Zod threw on the response — `options` had 3 items because the prompt didn't specify "exactly 4". Added that constraint to both the Zod schema and the prompt.
 - Looked at the raw LLM responses in the Fastify logs (logger: true) before they hit Zod to understand what the model was actually emitting vs. what the schema expected.
-- Verified the Anthropic SDK docs to confirm the correct `messages.create` signature and `response.content[0].text` access pattern for the current SDK version.
+- Verified each provider's SDK docs to confirm the correct method signatures and response access patterns.
 
 ---
 
@@ -68,4 +76,4 @@ First draft didn't include the full interface — it just described the shape in
 
 Treating LLM output as untrusted external data — the same way you'd treat a third-party API response — is the right mental model. It forces you to define the contract (the Zod schema) before writing the prompt, which actually improves the prompt because you know exactly what you need. The retry pattern is only possible because Zod produces structured, human-readable error messages; if validation had been a boolean pass/fail, there'd be nothing useful to feed back to the model. That closed loop — schema → error message → correction prompt — is the most interesting engineering insight from this project.
 
-The provider switch reinforced this: because the service layer was the only place with provider-specific code, switching from Gemini to Claude was a drop-in replacement. The Zod schemas, route handler, and prompt builder had no idea which LLM was behind the interface. That's the right way to build this.
+The three provider swaps reinforced a second point: LLM providers are a commodity layer. Because the service layer was the only place with provider-specific code, switching between Gemini, Claude, and Groq was a drop-in replacement each time. The Zod schemas, route handler, and prompt builder had no idea which model was behind the interface. That's the right way to build this kind of system.
