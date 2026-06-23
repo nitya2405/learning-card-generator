@@ -1,5 +1,13 @@
 # AI Collaboration Notes
 
+## Reflection (read this first)
+
+Treating LLM output as untrusted external data — the same way you'd treat a third-party API response — is the right mental model. It forces you to define the contract (the Zod schema) before writing the prompt, which actually improves the prompt because you know exactly what you need. The retry pattern is only possible because Zod produces structured, human-readable error messages; if validation had been a boolean pass/fail, there'd be nothing useful to feed back to the model. That closed loop — schema → error message → correction prompt — is the most interesting engineering insight from this project.
+
+The three provider swaps reinforced a second point: LLM providers are a commodity layer. Because the service layer was the only place with provider-specific code, switching between Gemini, Claude, and Groq was a drop-in replacement each time. The Zod schemas, route handler, and prompt builder had no idea which model was behind the interface. That's the right way to build this kind of system.
+
+---
+
 ## Provider history
 
 Three providers were tried before landing on Groq:
@@ -27,7 +35,7 @@ Each provider swap required changing exactly one file (`src/services/llm.ts`) an
 
 > "I'm building an API that returns a structured learning card for a school topic. The card needs to include an explanation, a formula with variables, a worked example with step-by-step LaTeX, a graph the frontend can render with Chart.js, common student mistakes, and a quiz question. Design a TypeScript interface for this. The graph data should be numeric points, not a Vega-Lite spec. LaTeX should be raw source strings."
 
-This produced the first draft of the `LearningCard` interface. I then trimmed it and added the `display: "inline" | "block"` discriminator myself after realising the frontend needs to know where to break equations.
+This produced the first draft of the `LearningCard` interface. Two things I changed myself after reviewing it: I rejected Vega-Lite for the graph (the AI actually suggested it as an option — I overrode that, knowing LLMs struggle with deeply nested specs) and I added the `display: "inline" | "block"` discriminator to each LaTeX expression (the AI's draft had no display hint, which would have forced the frontend to guess where to break equations). Those were my calls, not suggestions from the model.
 
 **2. LLM service setup (Claude Code)**
 
@@ -39,7 +47,7 @@ Claude Code got the structure right immediately but instantiated a new `Groq` cl
 
 > "Write a buildPrompt function for the learning card generator. It should embed the full TypeScript interface of LearningCard into the prompt and instruct the model to return only raw JSON. Include specific rules about computing actual numeric points for the graph, using KaTeX-compatible LaTeX, and writing grade-specific misconceptions."
 
-First draft didn't include the full interface — it just described the shape in prose. The model then returned inconsistent field names (`plain_text` instead of `plain_english`, `answer_index` instead of `correct_index`). Fixed by embedding the actual TypeScript interface as a code block in the prompt, which dramatically improved consistency.
+First draft didn't include the full interface — it just described the shape in prose. The model then returned inconsistent field names (`plain_text` instead of `plain_english`, `answer_index` instead of `correct_index`). Embedding the actual TypeScript interface as a verbatim code block in the prompt was my decision; the AI's first instinct was prose description.
 
 ---
 
@@ -62,18 +70,12 @@ First draft didn't include the full interface — it just described the shape in
 
 **4. tokens_used only counted the first call.** The original retry logic set `tokens_used` from the first response only. Fixed to accumulate tokens across both the initial call and the retry, so the metadata accurately reflects total cost.
 
+**5. The LLM hallucinated a hardcoded date.** The model returned `"generated_at": "2024-03-16T14:30:00.000Z"` — a made-up date — on every response, regardless of when the request was made. Caught by inspecting the raw response JSON in the server logs. Fixed by overriding `metadata.generated_at` with `new Date().toISOString()` after Zod parse, before returning the card. Timestamps should never be trusted from a model; this is a textbook case of LLM output being untrusted data even for fields that look trivial.
+
 ---
 
 ## How I caught and fixed it
 
 - Ran `npm run dev` and sent a test request. The server started but Zod threw on the response — `options` had 3 items because the prompt didn't specify "exactly 4". Added that constraint to both the Zod schema and the prompt.
-- Looked at the raw LLM responses in the Fastify logs (logger: true) before they hit Zod to understand what the model was actually emitting vs. what the schema expected.
+- Inspected the raw LLM response in the Fastify logs (logger: true) before it hit Zod — that's how the hardcoded date and the inconsistent field names were caught.
 - Verified each provider's SDK docs to confirm the correct method signatures and response access patterns.
-
----
-
-## Reflection
-
-Treating LLM output as untrusted external data — the same way you'd treat a third-party API response — is the right mental model. It forces you to define the contract (the Zod schema) before writing the prompt, which actually improves the prompt because you know exactly what you need. The retry pattern is only possible because Zod produces structured, human-readable error messages; if validation had been a boolean pass/fail, there'd be nothing useful to feed back to the model. That closed loop — schema → error message → correction prompt — is the most interesting engineering insight from this project.
-
-The three provider swaps reinforced a second point: LLM providers are a commodity layer. Because the service layer was the only place with provider-specific code, switching between Gemini, Claude, and Groq was a drop-in replacement each time. The Zod schemas, route handler, and prompt builder had no idea which model was behind the interface. That's the right way to build this kind of system.
