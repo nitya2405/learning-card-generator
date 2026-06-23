@@ -132,7 +132,7 @@ CRITICAL RULES:
 
 5. METADATA
    - Set generated_at to the current ISO timestamp.
-   - Set model to "gemini-1.5-flash".
+   - Set model to "claude-sonnet-4-6".
 
 6. INTRO
    - plain_english: 2-3 sentences, written for a grade-${req.grade} student. Zero jargon.

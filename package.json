@@ -1,7 +1,7 @@
 {
   "name": "learning-card-generator",
   "version": "1.0.0",
-  "description": "Fastify + Gemini API backend that generates structured learning cards for school students",
+  "description": "Fastify + Claude API backend that generates structured learning cards for school students",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -9,9 +9,9 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@anthropic-ai/sdk": "^0.39.0",
     "dotenv": "^16.4.5",
-    "fastify": "^4.28.1",
+    "fastify": "^5.8.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {

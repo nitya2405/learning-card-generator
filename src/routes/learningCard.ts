@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { ZodError } from "zod";
 import { RequestSchema } from "../schemas/requestSchema.js";
-import { generateLearningCard } from "../services/gemini.js";
+import { generateLearningCard } from "../services/llm.js";
 
 const bodyJsonSchema = {
   type: "object",
