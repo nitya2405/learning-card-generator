@@ -17,31 +17,13 @@ interface Step {
   expression: Expression;
 }
 
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Line {
-  label: string;
-  color: string;         // hex color e.g. "#3B82F6"
-  points: Point[];       // EXACTLY 11 computed points (x from -5 to 5 inclusive)
-}
-
-interface Annotation {
-  label: string;
-  x: number;
-  y: number;
-  note: string;
-}
-
 interface LearningCard {
   concept: string;
   board: string;
   grade: number;
 
   intro: {
-    plain_english: string;    // 2-3 sentence explanation for a Class-9 child, no jargon
+    plain_english: string;    // 2-3 sentence explanation for a Class-grade child, no jargon
     why_it_matters: string;   // real-world relevance hook
   };
 
@@ -60,14 +42,48 @@ interface LearningCard {
     };
   };
 
-  visual: {
-    type: "cartesian_graph";  // always this value
-    title: string;
-    x_axis: { label: string; min: number; max: number };
-    y_axis: { label: string; min: number; max: number };
-    lines: Line[];
-    annotations: Annotation[];
-  };
+  // The visual field must be ONE of these 5 types. Choose the most appropriate for the concept:
+  //
+  // cartesian_graph — for mathematical functions, lines, curves, graphs
+  //   Use for: algebra, geometry, physics motion/force graphs, any y=f(x)
+  //   { type: "cartesian_graph", title, x_axis: {label,min,max}, y_axis: {label,min,max},
+  //     lines: [{label, color (hex #RRGGBB), points: [{x,y}] (10-15 computed points)}],
+  //     annotations: [{label, x, y, note}] }
+  //
+  // flowchart — for processes, cycles, how things work step by step
+  //   Use for: water cycle, photosynthesis, how a bill becomes law, digestive system process
+  //   { type: "flowchart", title,
+  //     nodes: [{id, label, shape: "rectangle"|"diamond"|"oval"}] (2-10 nodes),
+  //     edges: [{from (node id), to (node id), label?}] }
+  //   Rules: diamond=decision, oval=start/end, rectangle=process step.
+  //   Every edge "from"/"to" must reference an id that exists in nodes.
+  //
+  // comparison_table — for comparing exactly two things
+  //   Use for: plant cell vs animal cell, metals vs non-metals, mitosis vs meiosis
+  //   { type: "comparison_table", title,
+  //     headers: [string, string],   // exactly 2 column headers
+  //     rows: [[string, string], ...]  // 2-8 rows, each exactly 2 cells }
+  //
+  // labeled_diagram — for structures with named parts and their functions
+  //   Use for: parts of a flower, human eye, cross-section of a leaf, parts of a neuron
+  //   { type: "labeled_diagram", title,
+  //     description: string,  // one sentence describing what the diagram shows
+  //     labels: [{part, function}] (3-10 parts) }
+  //
+  // timeline — for sequences, stages, life cycles, ordered historical events
+  //   Use for: stages of mitosis, rock cycle, life cycle of a butterfly, French Revolution events
+  //   { type: "timeline", title,
+  //     steps: [{order: number, label, description}] (2-8 steps, order starts at 1) }
+  //
+  // IMPORTANT: Return exactly one visual object matching one of these 5 shapes.
+  // The "type" field determines the shape. Do not invent other types.
+  visual: (
+    | { type: "cartesian_graph"; title: string; x_axis: { label: string; min: number; max: number }; y_axis: { label: string; min: number; max: number }; lines: { label: string; color: string; points: { x: number; y: number }[] }[]; annotations: { label: string; x: number; y: number; note: string }[] }
+    | { type: "flowchart"; title: string; nodes: { id: string; label: string; shape: "rectangle" | "diamond" | "oval" }[]; edges: { from: string; to: string; label?: string }[] }
+    | { type: "comparison_table"; title: string; headers: [string, string]; rows: [string, string][] }
+    | { type: "labeled_diagram"; title: string; description: string; labels: { part: string; function: string }[] }
+    | { type: "timeline"; title: string; steps: { order: number; label: string; description: string }[] }
+  );
 
   misconceptions: Array<{
     wrong: string;            // what students often think
@@ -83,7 +99,7 @@ interface LearningCard {
 
   metadata: {
     generated_at: string;    // ISO 8601 timestamp
-    model: string;           // e.g. "gemini-1.5-flash"
+    model: string;
     tokens_used?: number;
   };
 }
@@ -106,13 +122,16 @@ ${INTERFACE_DEFINITION}
 
 CRITICAL RULES:
 
-1. VISUAL / GRAPH POINTS
-   - For the visual section, compute ACTUAL numeric (x, y) points for each line.
-   - Use x values from -5 to 5 inclusive in steps of 1 (11 points per line).
-   - Calculate y values using the correct mathematical formula. These must be mathematically accurate.
-   - Example: for y = 2x + 3, point at x=2 is y=7, so { "x": 2, "y": 7 }.
-   - DO NOT make up or approximate points. Compute them precisely.
-   - Each line must have between 10 and 15 points.
+1. VISUAL TYPE SELECTION
+   - Choose the visual type that best fits the concept. Do NOT default to cartesian_graph for non-math topics.
+   - cartesian_graph: only for mathematical functions, equations, or data you can plot on x/y axes.
+   - flowchart: processes, cycles, step-by-step mechanisms (water cycle, digestion, photosynthesis).
+   - comparison_table: comparing exactly two things (plant vs animal cell, metals vs non-metals).
+   - labeled_diagram: physical or biological structures with named parts (flower, eye, neuron, leaf).
+   - timeline: ordered stages or events (mitosis phases, rock cycle, historical sequence).
+   - If cartesian_graph: compute ACTUAL numeric (x, y) points. Use x from -5 to 5 in steps of 1 (11 points).
+     Calculate y using the correct formula. Each line must have 10–15 points.
+   - If flowchart: every edge "from" and "to" must reference an id that exists in the nodes array.
 
 2. LATEX
    - Use standard KaTeX-compatible LaTeX math syntax.

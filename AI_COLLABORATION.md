@@ -70,7 +70,9 @@ First draft didn't include the full interface — it just described the shape in
 
 **4. tokens_used only counted the first call.** The original retry logic set `tokens_used` from the first response only. Fixed to accumulate tokens across both the initial call and the retry, so the metadata accurately reflects total cost.
 
-**5. The LLM hallucinated a hardcoded date.** The model returned `"generated_at": "2024-03-16T14:30:00.000Z"` — a made-up date — on every response, regardless of when the request was made. Caught by inspecting the raw response JSON in the server logs. Fixed by overriding `metadata.generated_at` with `new Date().toISOString()` after Zod parse, before returning the card. Timestamps should never be trusted from a model; this is a textbook case of LLM output being untrusted data even for fields that look trivial.
+**5. Visual schema was too narrow.** The initial implementation hardcoded `type: z.literal('cartesian_graph')` — which works for the slope-intercept example but fails for any non-math concept. A Class 4 EVS concept about parts of a flower would cause a Zod rejection on every attempt because the LLM would correctly try to return a labeled diagram, not a graph. Fixed by replacing the single schema with a `z.discriminatedUnion` of 5 visual types, and updating the prompt to explain when to use each. The LLM now selects the appropriate visual type for the concept.
+
+**6. The LLM hallucinated a hardcoded date.** The model returned `"generated_at": "2024-03-16T14:30:00.000Z"` — a made-up date — on every response, regardless of when the request was made. Caught by inspecting the raw response JSON in the server logs. Fixed by overriding `metadata.generated_at` with `new Date().toISOString()` after Zod parse, before returning the card. Timestamps should never be trusted from a model; this is a textbook case of LLM output being untrusted data even for fields that look trivial.
 
 ---
 

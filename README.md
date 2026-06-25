@@ -68,7 +68,9 @@ The response is a single JSON object conforming to the `LearningCard` schema des
 
 ### Custom schema over Vega-Lite
 
-Vega-Lite is expressive but deeply nested — a model forced to emit a full Vega-Lite spec reliably would require far more prompt engineering and still produces structural errors at higher rates than a flat, purpose-built schema. The custom `visual` schema here gives the frontend exactly the typed data it needs (axis bounds, labelled lines, annotations) without the cognitive overhead of spec compliance.
+Vega-Lite is expressive but deeply nested — a model forced to emit a full Vega-Lite spec reliably would require far more prompt engineering and still produces structural errors at higher rates than a flat, purpose-built schema. The custom `visual` schema here gives the frontend exactly the typed data it needs without the cognitive overhead of spec compliance.
+
+The `visual` field is a discriminated union of 5 types — `cartesian_graph`, `flowchart`, `comparison_table`, `labeled_diagram`, `timeline`. The LLM selects the appropriate type based on the concept. Zod validates whichever shape is returned using `z.discriminatedUnion`. This means a Class 4 EVS card about parts of a flower returns a `labeled_diagram`, while a Class 9 algebra card returns a `cartesian_graph`. A single visual type would break for ~80% of the school curriculum.
 
 ### LaTeX source strings with `display` type — not pre-rendered HTML
 
